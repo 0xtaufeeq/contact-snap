@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A minimal camera + spark mark, drawn in the safe zone -->
+    <path
+        android:fillColor="#FAF9F7"
+        android:pathData="M38,40h6l3,-4h14l3,4h6a4,4 0 0 1 4,4v22a4,4 0 0 1 -4,4H38a4,4 0 0 1 -4,-4V44a4,4 0 0 1 4,-4z" />
+    <path
+        android:fillColor="#1A1A1A"
+        android:pathData="M54,46m-9,0a9,9 0 1 0 18,0a9,9 0 1 0 -18,0" />
+    <path
+        android:fillColor="#FAF9F7"
+        android:pathData="M54,46m-3.5,0a3.5,3.5 0 1 0 7,0a3.5,3.5 0 1 0 -7,0" />
+</vector>
