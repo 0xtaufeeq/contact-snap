@@ -96,7 +96,7 @@ fun AboutScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Scan a business card and let Gemini turn it into a contact.",
+                "Scan a business card and let AI turn it into a contact.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

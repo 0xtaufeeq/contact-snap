@@ -32,7 +32,7 @@ class GeminiContactExtractor(
     private val json = "application/json".toMediaType()
 
     fun extract(images: List<String>, apiKey: String): Extraction {
-        if (apiKey.isBlank()) throw GeminiException("No API key set. Add your Gemini key in Settings.")
+        if (apiKey.isBlank()) throw GeminiException("No API key set. Add it in Settings.")
         if (images.isEmpty()) throw GeminiException("No image to read.")
 
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
@@ -52,7 +52,7 @@ class GeminiContactExtractor(
                 responseText = resp.body?.string().orEmpty()
             }
         } catch (e: Exception) {
-            throw GeminiException("Network error: ${e.message ?: "couldn't reach Gemini."}")
+            throw GeminiException("Network error: ${e.message ?: "couldn't reach the server."}")
         }
 
         if (code !in 200..299) {
@@ -117,8 +117,8 @@ class GeminiContactExtractor(
     private fun parseExtraction(responseText: String): Extraction {
         val root = JSONObject(responseText)
         val candidates = root.optJSONArray("candidates")
-            ?: throw GeminiException("Gemini returned no result. Try again.")
-        if (candidates.length() == 0) throw GeminiException("Gemini returned no result. Try again.")
+            ?: throw GeminiException("No result. Try again.")
+        if (candidates.length() == 0) throw GeminiException("No result. Try again.")
 
         val content = candidates.getJSONObject(0).optJSONObject("content")
         val firstPart = content?.optJSONArray("parts")?.optJSONObject(0)
@@ -150,7 +150,7 @@ class GeminiContactExtractor(
                 "Invalid API key. Check it in Settings."
             code == 429 -> "Free-tier rate limit hit. Wait a moment and try again."
             !message.isNullOrBlank() -> message
-            else -> "Gemini error ($code). Please try again."
+            else -> "Scan failed ($code). Please try again."
         }
     }
 

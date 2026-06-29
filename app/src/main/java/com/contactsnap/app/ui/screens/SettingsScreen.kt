@@ -105,13 +105,13 @@ fun SettingsScreen(
         ) {
             Spacer(Modifier.height(4.dp))
             Text(
-                "Gemini API key",
+                "API key",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onBackground
             )
             Text(
-                "ContactSnap uses Google's Gemini vision model to read cards. " +
-                    "Create a free key in Google AI Studio and paste it below — it's stored only on this device.",
+                "ContactSnap uses an AI vision model to read cards. " +
+                    "Create a free key, paste it below — it's stored only on this device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

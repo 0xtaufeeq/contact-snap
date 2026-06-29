@@ -16,6 +16,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,13 +41,17 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.contactsnap.app.contacts.ContactReader
+import com.contactsnap.app.ui.components.BottomNavBar
+import com.contactsnap.app.ui.FixContactsViewModel
 import com.contactsnap.app.ui.HistoryViewModel
 import com.contactsnap.app.ui.ScanViewModel
 import com.contactsnap.app.ui.SettingsViewModel
 import com.contactsnap.app.ui.screens.AboutScreen
 import com.contactsnap.app.ui.screens.CameraScreen
+import com.contactsnap.app.ui.screens.FixContactsScreen
 import com.contactsnap.app.ui.screens.HistoryScreen
 import com.contactsnap.app.ui.screens.HomeScreen
 import com.contactsnap.app.ui.screens.ManageGroupsScreen
@@ -69,8 +75,9 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
+                ThemeMode.AMOLED -> true
             }
-            ContactSnapTheme(darkTheme = dark) {
+            ContactSnapTheme(darkTheme = dark, amoled = theme == ThemeMode.AMOLED) {
                 AppRoot()
             }
         }
@@ -87,6 +94,7 @@ private object Routes {
     const val MANAGE_GROUPS = "manage_groups"
     const val ABOUT = "about"
     const val ONBOARDING = "onboarding"
+    const val FIX_CONTACTS = "fix_contacts"
 }
 
 @Composable
@@ -95,6 +103,7 @@ private fun AppRoot() {
     val vm: ScanViewModel = viewModel()
     val settingsVm: SettingsViewModel = viewModel()
     val historyVm: HistoryViewModel = viewModel()
+    val fixVm: FixContactsViewModel = viewModel()
     val context = LocalContext.current
     val state by vm.state.collectAsState()
     val apiKey by settingsVm.apiKey.collectAsState()
@@ -107,14 +116,16 @@ private fun AppRoot() {
     val existingGroups = remember(history) {
         history.map { it.contact.group }.filter { it.isNotBlank() }.distinct()
     }
+    val fixState by fixVm.state.collectAsState()
     var isSaving by remember { mutableStateOf(false) }
     var pendingDuplicates by remember { mutableStateOf<List<ContactReader.Match>?>(null) }
+    var pendingFixMerge by remember { mutableStateOf<(() -> Unit)?>(null) }
     var batchMode by remember { mutableStateOf(false) }
     var batchCount by remember { mutableStateOf(0) }
 
     fun requireKeyThen(action: () -> Unit) {
         if (apiKey.isBlank()) {
-            Toast.makeText(context, "Add your Gemini API key in Settings first.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Add your API key in Settings first.", Toast.LENGTH_SHORT).show()
             nav.navigate(Routes.SETTINGS)
         } else action()
     }
@@ -169,15 +180,88 @@ private fun AppRoot() {
         }
     }
 
+    val fixReadPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) fixVm.scan()
+        else Toast.makeText(context, "Contacts permission is needed to scan.", Toast.LENGTH_SHORT).show()
+    }
+
+    val fixWritePermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) pendingFixMerge?.invoke()
+        else Toast.makeText(context, "Contacts permission is needed to merge.", Toast.LENGTH_SHORT).show()
+        pendingFixMerge = null
+    }
+
+    fun startFixScan() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED)
+            fixVm.scan()
+        else fixReadPermission.launch(Manifest.permission.READ_CONTACTS)
+    }
+
+    fun doMerge(cluster: com.contactsnap.app.contacts.DupCluster, name: String, onResult: (Boolean) -> Unit) {
+        val run = {
+            fixVm.merge(cluster, name) { ok ->
+                onResult(ok)
+                if (!ok) Toast.makeText(context, "Couldn't merge — try again.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) run()
+        else { pendingFixMerge = run; fixWritePermission.launch(Manifest.permission.WRITE_CONTACTS) }
+    }
+
+    fun startScan() {
+        requireKeyThen {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+                nav.navigate(Routes.CAMERA)
+            else cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    fun startGallery() {
+        requireKeyThen {
+            galleryPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
+    }
+
+    fun switchTab(route: String) {
+        nav.navigate(route) {
+            popUpTo(Routes.HOME) { inclusive = route == Routes.HOME }
+            launchSingleTop = true
+        }
+    }
+
     // Wait until the onboarding flag has loaded so we start on the right screen.
     if (onboardingSeen == null) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
         return
     }
 
+    val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
+    val topLevel = setOf(Routes.HOME, Routes.HISTORY, Routes.SETTINGS, Routes.FIX_CONTACTS)
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            if (currentRoute in topLevel) {
+                BottomNavBar(
+                    current = currentRoute,
+                    onHome = { switchTab(Routes.HOME) },
+                    onHistory = { switchTab(Routes.HISTORY) },
+                    onScan = { startScan() },
+                    onSettings = { switchTab(Routes.SETTINGS) },
+                    onFix = { switchTab(Routes.FIX_CONTACTS) }
+                )
+            }
+        }
+    ) { scaffoldPadding ->
     NavHost(
         navController = nav,
-        startDestination = if (onboardingSeen == false) Routes.ONBOARDING else Routes.HOME
+        startDestination = if (onboardingSeen == false) Routes.ONBOARDING else Routes.HOME,
+        modifier = Modifier.padding(scaffoldPadding)
     ) {
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
@@ -191,23 +275,9 @@ private fun AppRoot() {
 
         composable(Routes.HOME) {
             HomeScreen(
-                onScan = {
-                    requireKeyThen {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-                            == PackageManager.PERMISSION_GRANTED
-                        ) nav.navigate(Routes.CAMERA)
-                        else cameraPermission.launch(Manifest.permission.CAMERA)
-                    }
-                },
-                onPickFromGallery = {
-                    requireKeyThen {
-                        galleryPicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    }
-                },
-                onOpenSettings = { nav.navigate(Routes.SETTINGS) },
-                onOpenHistory = { nav.navigate(Routes.HISTORY) },
+                onScan = { startScan() },
+                onPickFromGallery = { startGallery() },
+                onOpenHistory = { switchTab(Routes.HISTORY) },
                 batchMode = batchMode,
                 onToggleBatch = { batchMode = it }
             )
@@ -330,6 +400,16 @@ private fun AppRoot() {
                 onBack = { nav.popBackStack() }
             )
         }
+
+        composable(Routes.FIX_CONTACTS) {
+            FixContactsScreen(
+                state = fixState,
+                onScan = { startFixScan() },
+                onMerge = { cluster, name, onResult -> doMerge(cluster, name, onResult) },
+                onBack = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } }
+            )
+        }
+    }
     }
 
     pendingDuplicates?.let { matches ->

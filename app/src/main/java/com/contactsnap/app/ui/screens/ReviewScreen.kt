@@ -1,11 +1,14 @@
 package com.contactsnap.app.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,31 +19,35 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.LocalOffer
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.MailOutline
+import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -53,23 +60,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.contactsnap.app.model.ParsedContact
 import com.contactsnap.app.ui.ScanStatus
 import com.contactsnap.app.ui.ScanUiState
-import com.contactsnap.app.ui.components.LabeledField
-import com.contactsnap.app.ui.components.MultiValueField
-import com.contactsnap.app.ui.components.WarnColor
+import com.contactsnap.app.ui.components.EditableField
+import com.contactsnap.app.ui.components.EditableList
+import com.contactsnap.app.ui.components.ExpandableSection
+import com.contactsnap.app.ui.components.glass
 import com.contactsnap.app.util.NameFormat
 import com.contactsnap.app.util.NameFormats
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReviewScreen(
     state: ScanUiState,
@@ -84,21 +89,21 @@ fun ReviewScreen(
     onOpenSettings: () -> Unit
 ) {
     val c = state.contact
+    val warn = state.lowConfidence
+    var moreOpen by remember { mutableStateOf(c.websites.isNotEmpty() || c.address.isNotBlank()) }
+    var organizeOpen by remember { mutableStateOf(c.group.isNotBlank() || c.tags.isNotEmpty() || c.notes.isNotBlank()) }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Review contact", style = MaterialTheme.typography.titleLarge) },
+                title = { Text("Review", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
-                    IconButton(onClick = onRetake) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Retake")
-                    }
+                    IconButton(onClick = onRetake) { Icon(Icons.Rounded.ArrowBack, contentDescription = "Back") }
                 },
                 actions = {
                     if (state.status == ScanStatus.Ready) {
-                        IconButton(onClick = onShare) {
-                            Icon(Icons.Rounded.Share, contentDescription = "Share as vCard")
-                        }
+                        IconButton(onClick = onShare) { Icon(Icons.Rounded.Share, contentDescription = "Share") }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -108,7 +113,7 @@ fun ReviewScreen(
             )
         },
         bottomBar = {
-            Surface(color = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
+            Surface(color = MaterialTheme.colorScheme.background) {
                 Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 14.dp).navigationBarsPadding()) {
                     Button(
                         onClick = onSave,
@@ -121,11 +126,7 @@ fun ReviewScreen(
                         )
                     ) {
                         if (isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
-                            )
+                            CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                         } else {
                             Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(10.dp))
@@ -138,135 +139,94 @@ fun ReviewScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             Column(
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(0.dp))
 
-                state.imageUri?.let { uri ->
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = "Captured card",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1.7f)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                    )
+                // Identity card
+                SectionCard {
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(initials(c.name), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        EditableField(c.name, { v -> onUpdate { it.copy(name = v) } }, Modifier.weight(1f), placeholder = "Name", big = true, warn = "name" in warn)
+                    }
+                    val savedAs = NameFormats.format(nameFormat, c)
+                    if (savedAs.isNotBlank()) {
+                        Text(
+                            "Saves as “$savedAs”",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 62.dp, bottom = 4.dp)
+                        )
+                    }
+                    EditableField(c.jobTitle, { v -> onUpdate { it.copy(jobTitle = v) } }, label = "Title", placeholder = "Job title", warn = "jobTitle" in warn)
+                    EditableField(c.company, { v -> onUpdate { it.copy(company = v) } }, label = "Company", placeholder = "Company", warn = "company" in warn)
                 }
 
-                SaveAsPreview(NameFormats.format(nameFormat, c))
+                // Channels card
+                SectionCard {
+                    EditableList(c.phones, { v -> onUpdate { it.copy(phones = v) } }, "phone", Icons.Rounded.Phone, warn = "phones" in warn)
+                    EditableList(c.emails, { v -> onUpdate { it.copy(emails = v) } }, "email", Icons.Rounded.MailOutline, warn = "emails" in warn)
+                }
 
-                if (state.lowConfidence.isNotEmpty()) LowConfidenceBanner()
+                SectionCard {
+                    ExpandableSection("More details", Icons.Rounded.LocationOn, moreOpen, { moreOpen = !moreOpen }) {
+                        EditableList(c.websites, { v -> onUpdate { it.copy(websites = v) } }, "website", Icons.Rounded.Language, warn = "websites" in warn)
+                        EditableField(c.address, { v -> onUpdate { it.copy(address = v) } }, label = "Address", placeholder = "Street, city", warn = "address" in warn)
+                    }
+                }
 
-                val warn = state.lowConfidence
-                LabeledField("Name", c.name, { v -> onUpdate { it.copy(name = v) } }, placeholder = "Full name", warn = "name" in warn)
-                LabeledField("Job title", c.jobTitle, { v -> onUpdate { it.copy(jobTitle = v) } }, placeholder = "e.g. Product Manager", warn = "jobTitle" in warn)
-                LabeledField("Company", c.company, { v -> onUpdate { it.copy(company = v) } }, placeholder = "Company name", warn = "company" in warn)
+                SectionCard {
+                    ExpandableSection("Group, tags, and note", Icons.Rounded.LocalOffer, organizeOpen, { organizeOpen = !organizeOpen }) {
+                        EditableField(c.group, { v -> onUpdate { it.copy(group = v) } }, label = "Group · where you met", placeholder = "e.g. Web Summit 2026")
+                        val others = existingGroups.filter { it.isNotBlank() && it != c.group }
+                        if (others.isNotEmpty()) GroupSuggestions(others) { g -> onUpdate { it.copy(group = g) } }
+                        TagField(c.tags) { v -> onUpdate { it.copy(tags = v) } }
+                        EditableField(c.notes, { v -> onUpdate { it.copy(notes = v) } }, label = "Note", placeholder = "Saved to the contact")
+                    }
+                }
 
-                MultiValueField("Phone", c.phones, { v -> onUpdate { it.copy(phones = v) } }, "Add phone", KeyboardType.Phone, warn = "phones" in warn)
-                MultiValueField("Email", c.emails, { v -> onUpdate { it.copy(emails = v) } }, "Add email", KeyboardType.Email, warn = "emails" in warn)
-                MultiValueField("Website", c.websites, { v -> onUpdate { it.copy(websites = v) } }, "Add website", KeyboardType.Uri, warn = "websites" in warn)
-
-                LabeledField("Address", c.address, { v -> onUpdate { it.copy(address = v) } }, placeholder = "Street, city", warn = "address" in warn)
-
-                GroupField(
-                    value = c.group,
-                    suggestions = existingGroups,
-                    onValueChange = { v -> onUpdate { it.copy(group = v) } }
-                )
-
-                TagField(
-                    tags = c.tags,
-                    onChange = { v -> onUpdate { it.copy(tags = v) } }
-                )
-
-                NotesField(
-                    value = c.notes,
-                    onValueChange = { v -> onUpdate { it.copy(notes = v) } }
-                )
-
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
             }
 
-            if (state.status == ScanStatus.Processing) {
-                ProcessingOverlay()
-            }
+            if (state.status == ScanStatus.Processing) ProcessingOverlay()
             if (state.status == ScanStatus.Error) {
-                ErrorOverlay(
-                    message = state.errorMessage ?: "Something went wrong.",
-                    onRetry = onRetryExtraction,
-                    onOpenSettings = onOpenSettings
-                )
+                ErrorOverlay(state.errorMessage ?: "Something went wrong.", onRetryExtraction, onOpenSettings)
             }
         }
     }
 }
 
-@Composable
-private fun ErrorOverlay(
-    message: String,
-    onRetry: () -> Unit,
-    onOpenSettings: () -> Unit
-) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.96f))
-            .padding(horizontal = 32.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                "Couldn't read the card",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = onRetry,
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) { Text("Try again") }
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onOpenSettings) {
-                Text("Open settings", color = MaterialTheme.colorScheme.secondary)
-            }
-        }
+private fun initials(name: String): String {
+    val parts = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    return when {
+        parts.isEmpty() -> "+"
+        parts.size == 1 -> parts[0].take(2).uppercase()
+        else -> (parts[0].take(1) + parts[1].take(1)).uppercase()
     }
 }
 
 @Composable
-private fun LowConfidenceBanner() {
-    Row(
+private fun SectionCard(content: @Composable () -> Unit) {
+    Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(WarnColor.copy(alpha = 0.12f))
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(Icons.Rounded.Info, contentDescription = null, tint = WarnColor, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(10.dp))
-        Text(
-            "Gemini wasn't fully sure about the highlighted fields — give them a quick check.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+            .glass(RoundedCornerShape(18.dp))
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) { content() }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GroupSuggestions(groups: List<String>, onPick: (String) -> Unit) {
+    FlowRow(Modifier.padding(top = 4.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        groups.forEach { g -> SuggestionChip(onClick = { onPick(g) }, label = { Text(g) }) }
     }
 }
 
@@ -274,138 +234,74 @@ private fun LowConfidenceBanner() {
 @Composable
 private fun TagField(tags: List<String>, onChange: (List<String>) -> Unit) {
     var input by remember { mutableStateOf("") }
-    fun addTag() {
+    fun add() {
         val t = input.trim()
         if (t.isNotEmpty() && tags.none { it.equals(t, ignoreCase = true) }) onChange(tags + t)
         input = ""
     }
-    Column(Modifier.fillMaxWidth()) {
-        Text(
-            "TAGS",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-        )
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Text("TAGS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (tags.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 tags.forEach { tag ->
                     InputChip(
                         selected = false,
                         onClick = { onChange(tags - tag) },
                         label = { Text(tag) },
-                        trailingIcon = {
-                            Icon(Icons.Rounded.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp))
-                        }
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-        OutlinedTextField(
-            value = input,
-            onValueChange = { input = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            placeholder = { Text("Add a tag (e.g. investor, follow-up)") },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { addTag() }),
-            trailingIcon = {
-                IconButton(onClick = { addTag() }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Add tag")
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun NotesField(value: String, onValueChange: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(
-            "NOTES",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-        )
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 3,
-            shape = RoundedCornerShape(14.dp),
-            placeholder = { Text("Saved to the contact's notes") }
-        )
-    }
-}
-
-@Composable
-private fun SaveAsPreview(displayName: String) {
-    if (displayName.isBlank()) return
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-    ) {
-        Text(
-            "WILL SAVE AS",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            displayName,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun GroupField(
-    value: String,
-    suggestions: List<String>,
-    onValueChange: (String) -> Unit
-) {
-    Column(Modifier.fillMaxWidth()) {
-        LabeledField(
-            label = "Group · where you met",
-            value = value,
-            onValueChange = onValueChange,
-            placeholder = "e.g. Web Summit 2026"
-        )
-        val others = suggestions.filter { it.isNotBlank() && it != value }
-        if (others.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                others.forEach { group ->
-                    SuggestionChip(
-                        onClick = { onValueChange(group) },
-                        label = { Text(group) }
+                        trailingIcon = { Icon(Icons.Rounded.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp)) }
                     )
                 }
             }
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BasicTextField(
+                value = input,
+                onValueChange = { input = it },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { add() }),
+                modifier = Modifier.weight(1f).padding(vertical = 10.dp)
+            )
+            IconButton(onClick = { add() }) { Icon(Icons.Rounded.Add, contentDescription = "Add tag") }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
     }
 }
 
 @Composable
 private fun ProcessingOverlay() {
     Box(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f)),
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f)),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = MaterialTheme.colorScheme.secondary, strokeWidth = 2.dp)
             Spacer(Modifier.height(20.dp))
             Text("Reading the card…", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
-            Spacer(Modifier.height(4.dp))
-            Text("Extracting name, phone and email", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ErrorOverlay(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.96f)).padding(horizontal = 32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Couldn't read the card", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
+            Spacer(Modifier.height(8.dp))
+            Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(24.dp))
+            Button(
+                onClick = onRetry,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
+            ) { Text("Try again") }
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onOpenSettings) { Text("Open settings", color = MaterialTheme.colorScheme.secondary) }
         }
     }
 }

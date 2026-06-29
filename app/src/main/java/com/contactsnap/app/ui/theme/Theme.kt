@@ -10,53 +10,79 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val LightColors = lightColorScheme(
-    primary = Ink,
-    onPrimary = Paper,
-    secondary = Accent,
-    onSecondary = Paper,
-    tertiary = Accent,
-    background = Paper,
-    onBackground = Ink,
-    surface = Paper,
-    onSurface = Ink,
-    surfaceVariant = PaperDim,
-    onSurfaceVariant = InkSoft,
-    outline = Hairline,
-    outlineVariant = Hairline,
-    surfaceContainer = PaperDim,
-    surfaceContainerHigh = AccentSoft
+private val DarkColors = darkColorScheme(
+    primary = AccentDark,
+    onPrimary = OnAccentDark,
+    secondary = AccentDark,
+    onSecondary = OnAccentDark,
+    tertiary = AccentDark,
+    background = BgDark,
+    onBackground = TextDark,
+    surface = BgDark,
+    onSurface = TextDark,
+    surfaceVariant = CardDark,
+    onSurfaceVariant = TextMutedDark,
+    outline = OutlineDark,
+    outlineVariant = OutlineDimDark,
+    surfaceContainerLowest = BgDark,
+    surfaceContainer = CardDark,
+    surfaceContainerHigh = CardHighDark
 )
 
-private val DarkColors = darkColorScheme(
-    primary = PaperInk,
-    onPrimary = InkPaper,
+private val AmoledColors = darkColorScheme(
+    primary = AccentDark,
+    onPrimary = OnAccentDark,
     secondary = AccentDark,
-    onSecondary = InkPaper,
+    onSecondary = OnAccentDark,
     tertiary = AccentDark,
-    background = InkPaper,
-    onBackground = PaperInk,
-    surface = InkPaper,
-    onSurface = PaperInk,
-    surfaceVariant = InkPaperDim,
-    onSurfaceVariant = PaperInkSoft,
-    outline = HairlineDark,
-    outlineVariant = HairlineDark,
-    surfaceContainer = InkPaperDim,
-    surfaceContainerHigh = HairlineDark
+    background = BgAmoled,
+    onBackground = TextDark,
+    surface = BgAmoled,
+    onSurface = TextDark,
+    surfaceVariant = CardAmoled,
+    onSurfaceVariant = TextMutedDark,
+    outline = OutlineAmoled,
+    outlineVariant = OutlineDimAmoled,
+    surfaceContainerLowest = BgAmoled,
+    surfaceContainer = CardAmoled,
+    surfaceContainerHigh = CardHighAmoled
+)
+
+private val LightColors = lightColorScheme(
+    primary = AccentLight,
+    onPrimary = OnAccentLight,
+    secondary = AccentLight,
+    onSecondary = OnAccentLight,
+    tertiary = AccentLight,
+    background = BgLight,
+    onBackground = TextLight,
+    surface = BgLight,
+    onSurface = TextLight,
+    surfaceVariant = CardLight,
+    onSurfaceVariant = TextMutedLight,
+    outline = OutlineLight,
+    outlineVariant = OutlineDimLight,
+    surfaceContainerLowest = BgLight,
+    surfaceContainer = CardLight,
+    surfaceContainerHigh = CardHighLight
 )
 
 @Composable
 fun ContactSnapTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    amoled: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colors = if (darkTheme) DarkColors else LightColors
+    val colors = when {
+        amoled -> AmoledColors
+        darkTheme -> DarkColors
+        else -> LightColors
+    }
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !(darkTheme || amoled)
         }
     }
     MaterialTheme(

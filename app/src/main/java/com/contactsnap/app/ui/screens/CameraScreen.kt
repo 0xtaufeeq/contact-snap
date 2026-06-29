@@ -161,7 +161,7 @@ fun CameraScreen(
                 .align(Alignment.TopEnd)
                 .padding(12.dp)
                 .clip(RoundedCornerShape(50))
-                .background(if (autoOn) Color(0xFFB6552F) else Color.Black.copy(alpha = 0.35f))
+                .background(if (autoOn) Color(0xFF5061D6) else Color.Black.copy(alpha = 0.35f))
                 .clickable { autoOn = !autoOn }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically

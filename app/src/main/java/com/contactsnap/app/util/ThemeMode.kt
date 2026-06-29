@@ -4,10 +4,11 @@ package com.contactsnap.app.util
 enum class ThemeMode(val id: String, val label: String) {
     SYSTEM("system", "System default"),
     LIGHT("light", "Light"),
-    DARK("dark", "Dark");
+    DARK("dark", "Dark"),
+    AMOLED("amoled", "AMOLED (pure black)");
 
     companion object {
-        val DEFAULT = SYSTEM
+        val DEFAULT = DARK
         fun fromId(id: String?): ThemeMode = entries.firstOrNull { it.id == id } ?: DEFAULT
     }
 }
