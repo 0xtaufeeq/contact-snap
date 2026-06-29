@@ -31,6 +31,7 @@ import com.contactsnap.app.ui.SettingsViewModel
 import com.contactsnap.app.ui.screens.CameraScreen
 import com.contactsnap.app.ui.screens.HistoryScreen
 import com.contactsnap.app.ui.screens.HomeScreen
+import com.contactsnap.app.ui.screens.ManageGroupsScreen
 import com.contactsnap.app.ui.screens.ReviewScreen
 import com.contactsnap.app.ui.screens.SettingsScreen
 import com.contactsnap.app.ui.screens.SuccessScreen
@@ -55,6 +56,7 @@ private object Routes {
     const val SUCCESS = "success"
     const val SETTINGS = "settings"
     const val HISTORY = "history"
+    const val MANAGE_GROUPS = "manage_groups"
 }
 
 @Composable
@@ -68,6 +70,7 @@ private fun AppRoot() {
     val apiKey by settingsVm.apiKey.collectAsState()
     val nameFormat by settingsVm.nameFormat.collectAsState()
     val history by historyVm.entries.collectAsState()
+    val groupCounts by historyVm.groups.collectAsState()
     val existingGroups = remember(history) {
         history.map { it.contact.group }.filter { it.isNotBlank() }.distinct()
     }
@@ -211,6 +214,16 @@ private fun AppRoot() {
                 },
                 onDelete = { historyVm.delete(it) },
                 onClear = { historyVm.clear() },
+                onManageGroups = { nav.navigate(Routes.MANAGE_GROUPS) },
+                onBack = { nav.popBackStack() }
+            )
+        }
+
+        composable(Routes.MANAGE_GROUPS) {
+            ManageGroupsScreen(
+                groups = groupCounts,
+                onRename = { old, new -> historyVm.renameGroup(old, new) },
+                onDelete = { historyVm.deleteGroup(it) },
                 onBack = { nav.popBackStack() }
             )
         }

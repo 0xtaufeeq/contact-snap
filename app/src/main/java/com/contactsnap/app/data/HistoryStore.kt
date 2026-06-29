@@ -62,6 +62,27 @@ class HistoryStore(private val context: Context) {
         if (path.isNotBlank()) runCatching { File(path).delete() }
     }
 
+    /** Rename a group across every scan that uses it. */
+    suspend fun renameGroup(old: String, new: String) {
+        val target = new.trim()
+        context.historyDataStore.edit { prefs ->
+            val updated = decode(prefs[key].orEmpty()).map {
+                if (it.contact.group == old) it.copy(contact = it.contact.copy(group = target)) else it
+            }
+            prefs[key] = encode(updated)
+        }
+    }
+
+    /** Remove a group label from every scan that uses it (contacts are kept). */
+    suspend fun deleteGroup(name: String) {
+        context.historyDataStore.edit { prefs ->
+            val updated = decode(prefs[key].orEmpty()).map {
+                if (it.contact.group == name) it.copy(contact = it.contact.copy(group = "")) else it
+            }
+            prefs[key] = encode(updated)
+        }
+    }
+
     private fun encode(entries: List<HistoryEntry>): String {
         val arr = JSONArray()
         entries.forEach { e ->
