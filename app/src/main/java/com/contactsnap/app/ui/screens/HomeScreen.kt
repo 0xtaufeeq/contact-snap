@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -42,7 +43,9 @@ fun HomeScreen(
     onScan: () -> Unit,
     onPickFromGallery: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenHistory: () -> Unit
+    onOpenHistory: () -> Unit,
+    batchMode: Boolean,
+    onToggleBatch: (Boolean) -> Unit
 ) {
     Column(
         Modifier
@@ -99,6 +102,23 @@ fun HomeScreen(
         StepRow("3", "Save", "Confirm and it lands in your contacts.")
 
         Spacer(Modifier.weight(1f))
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Batch mode", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+                Text(
+                    "Keep scanning after each save",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(checked = batchMode, onCheckedChange = onToggleBatch)
+        }
 
         Button(
             onClick = onScan,

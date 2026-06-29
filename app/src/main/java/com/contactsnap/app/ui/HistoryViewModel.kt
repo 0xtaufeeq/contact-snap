@@ -3,6 +3,7 @@ package com.contactsnap.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.contactsnap.app.data.GroupColorStore
 import com.contactsnap.app.data.HistoryEntry
 import com.contactsnap.app.data.HistoryStore
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,9 +18,13 @@ data class GroupCount(val name: String, val count: Int)
 class HistoryViewModel(app: Application) : AndroidViewModel(app) {
 
     private val store = HistoryStore(app)
+    private val colorStore = GroupColorStore(app)
 
     val entries: StateFlow<List<HistoryEntry>> = store.historyFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val groupColors: StateFlow<Map<String, Int>> = colorStore.colorsFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     val groups: StateFlow<List<GroupCount>> = store.historyFlow
         .map { list ->
@@ -42,10 +47,20 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun renameGroup(old: String, new: String) {
         if (new.isBlank() || new.trim() == old) return
-        viewModelScope.launch { store.renameGroup(old, new) }
+        viewModelScope.launch {
+            store.renameGroup(old, new)
+            colorStore.rename(old, new.trim())
+        }
     }
 
     fun deleteGroup(name: String) {
-        viewModelScope.launch { store.deleteGroup(name) }
+        viewModelScope.launch {
+            store.deleteGroup(name)
+            colorStore.remove(name)
+        }
+    }
+
+    fun setGroupColor(group: String, argb: Int) {
+        viewModelScope.launch { colorStore.setColor(group, argb) }
     }
 }

@@ -78,6 +78,13 @@ object ContactWriter {
                 .build()
         }
 
+        if (contact.notes.isNotBlank()) {
+            ops += dataInsert()
+                .withValue(ContactsContract.Data.MIMETYPE, CommonDataKinds.Note.CONTENT_ITEM_TYPE)
+                .withValue(CommonDataKinds.Note.NOTE, contact.notes)
+                .build()
+        }
+
         return try {
             context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
             true
@@ -91,4 +98,78 @@ object ContactWriter {
         ContentProviderOperation
             .newInsert(ContactsContract.Data.CONTENT_URI)
             .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+
+    /**
+     * Appends new phones/emails/websites (and a note) to an existing contact,
+     * skipping values that contact already has. @return true on success.
+     */
+    fun merge(context: Context, contactId: Long, contact: ParsedContact): Boolean {
+        val rawId = firstRawContactId(context, contactId) ?: return false
+
+        val existingPhones = existingValues(context, contactId, CommonDataKinds.Phone.CONTENT_ITEM_TYPE, CommonDataKinds.Phone.NUMBER)
+            .map { it.filter(Char::isDigit) }.toSet()
+        val existingEmails = existingValues(context, contactId, CommonDataKinds.Email.CONTENT_ITEM_TYPE, CommonDataKinds.Email.ADDRESS)
+            .map { it.lowercase() }.toSet()
+        val existingSites = existingValues(context, contactId, CommonDataKinds.Website.CONTENT_ITEM_TYPE, CommonDataKinds.Website.URL).toSet()
+
+        val ops = ArrayList<ContentProviderOperation>()
+
+        contact.phones.map { Phones.normalize(it) }
+            .filter { it.isNotEmpty() && it.filter(Char::isDigit) !in existingPhones }
+            .forEach { ops += rowInto(rawId, CommonDataKinds.Phone.CONTENT_ITEM_TYPE, CommonDataKinds.Phone.NUMBER, it, CommonDataKinds.Phone.TYPE, CommonDataKinds.Phone.TYPE_WORK) }
+
+        contact.emails
+            .filter { it.isNotBlank() && it.lowercase() !in existingEmails }
+            .forEach { ops += rowInto(rawId, CommonDataKinds.Email.CONTENT_ITEM_TYPE, CommonDataKinds.Email.ADDRESS, it, CommonDataKinds.Email.TYPE, CommonDataKinds.Email.TYPE_WORK) }
+
+        contact.websites
+            .filter { it.isNotBlank() && it !in existingSites }
+            .forEach { ops += rowInto(rawId, CommonDataKinds.Website.CONTENT_ITEM_TYPE, CommonDataKinds.Website.URL, it, null, null) }
+
+        if (contact.notes.isNotBlank()) {
+            ops += rowInto(rawId, CommonDataKinds.Note.CONTENT_ITEM_TYPE, CommonDataKinds.Note.NOTE, contact.notes, null, null)
+        }
+
+        if (ops.isEmpty()) return true // nothing new to add, but not a failure
+        return try {
+            context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun rowInto(
+        rawId: Long, mime: String, valueCol: String, value: String, typeCol: String?, type: Int?
+    ): ContentProviderOperation {
+        val b = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+            .withValue(ContactsContract.Data.RAW_CONTACT_ID, rawId)
+            .withValue(ContactsContract.Data.MIMETYPE, mime)
+            .withValue(valueCol, value)
+        if (typeCol != null && type != null) b.withValue(typeCol, type)
+        return b.build()
+    }
+
+    private fun firstRawContactId(context: Context, contactId: Long): Long? {
+        context.contentResolver.query(
+            ContactsContract.RawContacts.CONTENT_URI,
+            arrayOf(ContactsContract.RawContacts._ID),
+            "${ContactsContract.RawContacts.CONTACT_ID} = ?",
+            arrayOf(contactId.toString()),
+            null
+        )?.use { c -> if (c.moveToFirst()) return c.getLong(0) }
+        return null
+    }
+
+    private fun existingValues(context: Context, contactId: Long, mime: String, col: String): List<String> {
+        val out = ArrayList<String>()
+        context.contentResolver.query(
+            ContactsContract.Data.CONTENT_URI,
+            arrayOf(col),
+            "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
+            arrayOf(contactId.toString(), mime),
+            null
+        )?.use { c -> while (c.moveToNext()) c.getString(0)?.let { out.add(it) } }
+        return out
+    }
 }

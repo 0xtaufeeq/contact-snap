@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -24,12 +25,15 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.LocalOffer
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.contactsnap.app.data.HistoryEntry
 import com.contactsnap.app.model.ParsedContact
+import com.contactsnap.app.util.GroupColors
 import com.contactsnap.app.util.NameFormat
 import com.contactsnap.app.util.NameFormats
 import java.io.File
@@ -60,20 +66,24 @@ import java.io.File
 fun HistoryScreen(
     entries: List<HistoryEntry>,
     nameFormat: NameFormat,
+    groupColors: Map<String, Int>,
     onOpen: (HistoryEntry) -> Unit,
     onDelete: (String) -> Unit,
     onClear: () -> Unit,
     onManageGroups: () -> Unit,
+    onExportAll: () -> Unit,
     onBack: () -> Unit
 ) {
     var selectedGroup by remember { mutableStateOf<String?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
     val groups = remember(entries) {
         entries.map { it.contact.group }.filter { it.isNotBlank() }.distinct()
     }
-    val shown = remember(entries, selectedGroup) {
-        if (selectedGroup == null) entries
-        else entries.filter { it.contact.group == selectedGroup }
+    val shown = remember(entries, selectedGroup, query) {
+        entries
+            .filter { selectedGroup == null || it.contact.group == selectedGroup }
+            .filter { e -> query.isBlank() || e.contact.matches(query) }
     }
 
     Scaffold(
@@ -87,6 +97,11 @@ fun HistoryScreen(
                     }
                 },
                 actions = {
+                    if (entries.isNotEmpty()) {
+                        IconButton(onClick = onExportAll) {
+                            Icon(Icons.Rounded.Share, contentDescription = "Export all as vCard")
+                        }
+                    }
                     IconButton(onClick = onManageGroups) {
                         Icon(Icons.Rounded.LocalOffer, contentDescription = "Manage groups")
                     }
@@ -105,6 +120,27 @@ fun HistoryScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
 
+            if (entries.isNotEmpty()) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 4.dp),
+                    placeholder = { Text("Search name, company, group…") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp)
+                )
+            }
+
             if (groups.isNotEmpty()) {
                 FlowRow(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
@@ -119,16 +155,25 @@ fun HistoryScreen(
                         FilterChip(
                             selected = selectedGroup == g,
                             onClick = { selectedGroup = if (selectedGroup == g) null else g },
-                            label = { Text(g) }
+                            label = { Text(g) },
+                            leadingIcon = {
+                                Box(
+                                    Modifier
+                                        .size(10.dp)
+                                        .background(GroupColors.effective(g, groupColors[g]), CircleShape)
+                                )
+                            }
                         )
                     }
                 }
             }
 
             if (shown.isEmpty()) {
+                val message = if (entries.isEmpty()) "No scans yet.\nCards you scan will show up here."
+                else "No matches."
                 Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(
-                        "No scans yet.\nCards you scan will show up here.",
+                        message,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -144,6 +189,7 @@ fun HistoryScreen(
                         HistoryRow(
                             entry = entry,
                             nameFormat = nameFormat,
+                            groupColor = GroupColors.effective(entry.contact.group, groupColors[entry.contact.group]),
                             onOpen = { onOpen(entry) },
                             onDelete = { onDelete(entry.id) }
                         )
@@ -172,6 +218,7 @@ fun HistoryScreen(
 private fun HistoryRow(
     entry: HistoryEntry,
     nameFormat: NameFormat,
+    groupColor: Color,
     onOpen: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -215,10 +262,10 @@ private fun HistoryRow(
                 Text(
                     entry.contact.group,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.secondary,
+                    color = groupColor,
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .background(groupColor.copy(alpha = 0.15f))
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 )
             }
@@ -232,6 +279,15 @@ private fun HistoryRow(
             )
         }
     }
+}
+
+private fun ParsedContact.matches(query: String): Boolean {
+    val q = query.trim().lowercase()
+    return listOf(name, company, jobTitle, group, address, notes)
+        .any { it.lowercase().contains(q) } ||
+        phones.any { it.contains(q) } ||
+        emails.any { it.lowercase().contains(q) } ||
+        tags.any { it.lowercase().contains(q) }
 }
 
 @Composable

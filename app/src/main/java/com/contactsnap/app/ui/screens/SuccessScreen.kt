@@ -29,6 +29,9 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SuccessScreen(
     name: String,
+    batchMode: Boolean,
+    savedCount: Int,
+    onScanNext: () -> Unit,
     onScanAnother: () -> Unit,
     onDone: () -> Unit
 ) {
@@ -66,9 +69,17 @@ fun SuccessScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
+            if (batchMode && savedCount > 0) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "$savedCount saved this session",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
             Spacer(Modifier.height(40.dp))
             Button(
-                onClick = onScanAnother,
+                onClick = if (batchMode) onScanNext else onScanAnother,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -76,7 +87,11 @@ fun SuccessScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 )
             ) {
-                Text("Scan another", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (batchMode) "Scan next card" else "Scan another",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,19 +17,27 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
@@ -37,12 +46,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -51,6 +65,7 @@ import com.contactsnap.app.ui.ScanStatus
 import com.contactsnap.app.ui.ScanUiState
 import com.contactsnap.app.ui.components.LabeledField
 import com.contactsnap.app.ui.components.MultiValueField
+import com.contactsnap.app.ui.components.WarnColor
 import com.contactsnap.app.util.NameFormat
 import com.contactsnap.app.util.NameFormats
 
@@ -63,6 +78,7 @@ fun ReviewScreen(
     existingGroups: List<String>,
     onUpdate: ((ParsedContact) -> ParsedContact) -> Unit,
     onSave: () -> Unit,
+    onShare: () -> Unit,
     onRetake: () -> Unit,
     onRetryExtraction: () -> Unit,
     onOpenSettings: () -> Unit
@@ -76,6 +92,13 @@ fun ReviewScreen(
                 navigationIcon = {
                     IconButton(onClick = onRetake) {
                         Icon(Icons.Rounded.ArrowBack, contentDescription = "Retake")
+                    }
+                },
+                actions = {
+                    if (state.status == ScanStatus.Ready) {
+                        IconButton(onClick = onShare) {
+                            Icon(Icons.Rounded.Share, contentDescription = "Share as vCard")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -138,20 +161,33 @@ fun ReviewScreen(
 
                 SaveAsPreview(NameFormats.format(nameFormat, c))
 
-                LabeledField("Name", c.name, { v -> onUpdate { it.copy(name = v) } }, placeholder = "Full name")
-                LabeledField("Job title", c.jobTitle, { v -> onUpdate { it.copy(jobTitle = v) } }, placeholder = "e.g. Product Manager")
-                LabeledField("Company", c.company, { v -> onUpdate { it.copy(company = v) } }, placeholder = "Company name")
+                if (state.lowConfidence.isNotEmpty()) LowConfidenceBanner()
 
-                MultiValueField("Phone", c.phones, { v -> onUpdate { it.copy(phones = v) } }, "Add phone", KeyboardType.Phone)
-                MultiValueField("Email", c.emails, { v -> onUpdate { it.copy(emails = v) } }, "Add email", KeyboardType.Email)
-                MultiValueField("Website", c.websites, { v -> onUpdate { it.copy(websites = v) } }, "Add website", KeyboardType.Uri)
+                val warn = state.lowConfidence
+                LabeledField("Name", c.name, { v -> onUpdate { it.copy(name = v) } }, placeholder = "Full name", warn = "name" in warn)
+                LabeledField("Job title", c.jobTitle, { v -> onUpdate { it.copy(jobTitle = v) } }, placeholder = "e.g. Product Manager", warn = "jobTitle" in warn)
+                LabeledField("Company", c.company, { v -> onUpdate { it.copy(company = v) } }, placeholder = "Company name", warn = "company" in warn)
 
-                LabeledField("Address", c.address, { v -> onUpdate { it.copy(address = v) } }, placeholder = "Street, city")
+                MultiValueField("Phone", c.phones, { v -> onUpdate { it.copy(phones = v) } }, "Add phone", KeyboardType.Phone, warn = "phones" in warn)
+                MultiValueField("Email", c.emails, { v -> onUpdate { it.copy(emails = v) } }, "Add email", KeyboardType.Email, warn = "emails" in warn)
+                MultiValueField("Website", c.websites, { v -> onUpdate { it.copy(websites = v) } }, "Add website", KeyboardType.Uri, warn = "websites" in warn)
+
+                LabeledField("Address", c.address, { v -> onUpdate { it.copy(address = v) } }, placeholder = "Street, city", warn = "address" in warn)
 
                 GroupField(
                     value = c.group,
                     suggestions = existingGroups,
                     onValueChange = { v -> onUpdate { it.copy(group = v) } }
+                )
+
+                TagField(
+                    tags = c.tags,
+                    onChange = { v -> onUpdate { it.copy(tags = v) } }
+                )
+
+                NotesField(
+                    value = c.notes,
+                    onValueChange = { v -> onUpdate { it.copy(notes = v) } }
                 )
 
                 Spacer(Modifier.height(8.dp))
@@ -211,6 +247,95 @@ private fun ErrorOverlay(
                 Text("Open settings", color = MaterialTheme.colorScheme.secondary)
             }
         }
+    }
+}
+
+@Composable
+private fun LowConfidenceBanner() {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(WarnColor.copy(alpha = 0.12f))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Rounded.Info, contentDescription = null, tint = WarnColor, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Gemini wasn't fully sure about the highlighted fields — give them a quick check.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TagField(tags: List<String>, onChange: (List<String>) -> Unit) {
+    var input by remember { mutableStateOf("") }
+    fun addTag() {
+        val t = input.trim()
+        if (t.isNotEmpty() && tags.none { it.equals(t, ignoreCase = true) }) onChange(tags + t)
+        input = ""
+    }
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            "TAGS",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+        )
+        if (tags.isNotEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                tags.forEach { tag ->
+                    InputChip(
+                        selected = false,
+                        onClick = { onChange(tags - tag) },
+                        label = { Text(tag) },
+                        trailingIcon = {
+                            Icon(Icons.Rounded.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp))
+                        }
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        OutlinedTextField(
+            value = input,
+            onValueChange = { input = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            placeholder = { Text("Add a tag (e.g. investor, follow-up)") },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { addTag() }),
+            trailingIcon = {
+                IconButton(onClick = { addTag() }) {
+                    Icon(Icons.Rounded.Add, contentDescription = "Add tag")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun NotesField(value: String, onValueChange: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            "NOTES",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+        )
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+            shape = RoundedCornerShape(14.dp),
+            placeholder = { Text("Saved to the contact's notes") }
+        )
     }
 }
 

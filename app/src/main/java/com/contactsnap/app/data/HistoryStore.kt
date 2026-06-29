@@ -100,6 +100,8 @@ class HistoryStore(private val context: Context) {
                     .put("websites", JSONArray(c.websites))
                     .put("address", c.address)
                     .put("group", c.group)
+                    .put("notes", c.notes)
+                    .put("tags", JSONArray(c.tags))
             )
         }
         return arr.toString()
@@ -123,7 +125,9 @@ class HistoryStore(private val context: Context) {
                         emails = o.optJSONArray("emails").toList(),
                         websites = o.optJSONArray("websites").toList(),
                         address = o.optString("address"),
-                        group = o.optString("group")
+                        group = o.optString("group"),
+                        notes = o.optString("notes"),
+                        tags = o.optJSONArray("tags").toList()
                     )
                 )
             }

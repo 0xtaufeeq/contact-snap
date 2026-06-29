@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
@@ -52,6 +54,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.contactsnap.app.util.NameFormat
 import com.contactsnap.app.util.NameFormats
+import com.contactsnap.app.util.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +62,10 @@ fun SettingsScreen(
     savedKey: String,
     currentFormat: NameFormat,
     onSelectFormat: (NameFormat) -> Unit,
+    currentTheme: ThemeMode,
+    onSelectTheme: (ThemeMode) -> Unit,
     onSave: (String) -> Unit,
+    onOpenAbout: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -189,6 +195,54 @@ fun SettingsScreen(
                     onClick = { onSelectFormat(fmt) }
                 )
             }
+
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                "Appearance",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            ThemeMode.entries.forEach { mode ->
+                FormatOption(
+                    selected = mode == currentTheme,
+                    label = mode.label,
+                    example = "",
+                    onClick = { onSelectTheme(mode) }
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onOpenAbout)
+                    .padding(vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.size(12.dp))
+                Text(
+                    "About & developer",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(Modifier.height(16.dp))
         }
     }
@@ -216,7 +270,9 @@ private fun FormatOption(
         )
         Column(Modifier.padding(start = 4.dp)) {
             Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
-            Text(example, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (example.isNotBlank()) {
+                Text(example, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

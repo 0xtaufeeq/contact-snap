@@ -13,6 +13,9 @@ import java.util.concurrent.TimeUnit
 /** Raised with a user-facing message when extraction fails. */
 class GeminiException(message: String) : Exception(message)
 
+/** Result of an extraction: the contact plus the field keys Gemini was unsure about. */
+data class Extraction(val contact: ParsedContact, val lowConfidence: Set<String>)
+
 /**
  * Sends a card image to Google's Gemini vision model and gets back structured
  * contact fields. Uses the free-tier `generateContent` endpoint with a response
@@ -28,11 +31,12 @@ class GeminiContactExtractor(
 
     private val json = "application/json".toMediaType()
 
-    fun extract(base64Jpeg: String, apiKey: String): ParsedContact {
+    fun extract(images: List<String>, apiKey: String): Extraction {
         if (apiKey.isBlank()) throw GeminiException("No API key set. Add your Gemini key in Settings.")
+        if (images.isEmpty()) throw GeminiException("No image to read.")
 
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
-        val body = buildRequestBody(base64Jpeg).toString().toRequestBody(json)
+        val body = buildRequestBody(images).toString().toRequestBody(json)
 
         val request = Request.Builder()
             .url(url)
@@ -54,17 +58,21 @@ class GeminiContactExtractor(
         if (code !in 200..299) {
             throw GeminiException(parseApiError(responseText, code))
         }
-        return parseContact(responseText)
+        return parseExtraction(responseText)
     }
 
-    private fun buildRequestBody(base64Jpeg: String): JSONObject {
+    private fun buildRequestBody(images: List<String>): JSONObject {
+        val multi = if (images.size > 1)
+            "The images are different sides/photos of the SAME card — combine them into one contact.\n" else ""
         val prompt = """
             You are extracting contact details from a photo of a business card or contact information.
-            Read every part of the image. Return ONLY the fields that actually appear.
+            ${multi}Read every part of the image. Return ONLY the fields that actually appear.
             Use the person's full name for "name".
             For phone numbers, output digits only with a leading + if present — no spaces, hyphens, or parentheses.
             Combine multi-line street addresses into a single "address" string.
             Leave a field empty (or its array empty) if it is not present. Do not invent anything.
+            In "uncertainFields", list the keys of any fields you are NOT confident about
+            (allowed keys: name, jobTitle, company, phones, emails, websites, address).
         """.trimIndent()
 
         val schema = JSONObject()
@@ -78,16 +86,18 @@ class GeminiContactExtractor(
                     .put("emails", arrType())
                     .put("websites", arrType())
                     .put("address", strType())
+                    .put("uncertainFields", arrType())
             )
 
-        val parts = JSONArray()
-            .put(JSONObject().put("text", prompt))
-            .put(
+        val parts = JSONArray().put(JSONObject().put("text", prompt))
+        images.forEach { b64 ->
+            parts.put(
                 JSONObject().put(
                     "inline_data",
-                    JSONObject().put("mime_type", "image/jpeg").put("data", base64Jpeg)
+                    JSONObject().put("mime_type", "image/jpeg").put("data", b64)
                 )
             )
+        }
 
         return JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("parts", parts)))
@@ -102,7 +112,9 @@ class GeminiContactExtractor(
     private fun strType() = JSONObject().put("type", "STRING")
     private fun arrType() = JSONObject().put("type", "ARRAY").put("items", strType())
 
-    private fun parseContact(responseText: String): ParsedContact {
+    private val knownFields = setOf("name", "jobTitle", "company", "phones", "emails", "websites", "address")
+
+    private fun parseExtraction(responseText: String): Extraction {
         val root = JSONObject(responseText)
         val candidates = root.optJSONArray("candidates")
             ?: throw GeminiException("Gemini returned no result. Try again.")
@@ -114,7 +126,7 @@ class GeminiContactExtractor(
         if (text.isBlank()) throw GeminiException("Couldn't read any details from the image.")
 
         val data = JSONObject(text)
-        return ParsedContact(
+        val contact = ParsedContact(
             name = data.optString("name").trim(),
             jobTitle = data.optString("jobTitle").trim(),
             company = data.optString("company").trim(),
@@ -124,6 +136,9 @@ class GeminiContactExtractor(
             address = data.optString("address").trim(),
             rawText = text
         )
+        val lowConfidence = data.optJSONArray("uncertainFields").toStringList()
+            .filter { it in knownFields }.toSet()
+        return Extraction(contact, lowConfidence)
     }
 
     private fun parseApiError(responseText: String, code: Int): String {

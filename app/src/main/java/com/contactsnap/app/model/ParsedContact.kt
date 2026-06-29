@@ -14,5 +14,9 @@ data class ParsedContact(
     val address: String = "",
     /** Contact group / label, e.g. where you met them ("Web Summit 2026"). */
     val group: String = "",
+    /** Free-form note saved with the contact. */
+    val notes: String = "",
+    /** Free-form labels for in-app organising (not written to phone contacts). */
+    val tags: List<String> = emptyList(),
     val rawText: String = ""
 )

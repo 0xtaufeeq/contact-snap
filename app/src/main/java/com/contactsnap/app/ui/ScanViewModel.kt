@@ -34,7 +34,8 @@ data class ScanUiState(
     val errorMessage: String? = null,
     val saved: Boolean = false,
     val historyId: String? = null,
-    val imagePath: String = ""
+    val imagePath: String = "",
+    val lowConfidence: Set<String> = emptySet()
 )
 
 class ScanViewModel(app: Application) : AndroidViewModel(app) {
@@ -46,26 +47,36 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(ScanUiState())
     val state: StateFlow<ScanUiState> = _state.asStateFlow()
 
-    /** Called after a photo is captured/picked; sends it to Gemini for extraction. */
-    fun onImageCaptured(uri: Uri) {
+    private var lastUris: List<Uri> = emptyList()
+
+    /** Single image (gallery import). */
+    fun onImageCaptured(uri: Uri) = onImagesCaptured(listOf(uri))
+
+    /** One or more images of the SAME card (e.g. front + back); extracted together. */
+    fun onImagesCaptured(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        lastUris = uris
         val id = UUID.randomUUID().toString()
         _state.update {
             it.copy(
-                status = ScanStatus.Processing, imageUri = uri,
-                saved = false, errorMessage = null, historyId = id, imagePath = ""
+                status = ScanStatus.Processing, imageUri = uris.first(),
+                saved = false, errorMessage = null, historyId = id, imagePath = "", lowConfidence = emptySet()
             )
         }
         viewModelScope.launch {
             try {
                 val key = settings.get()
-                val (contact, savedPath) = withContext(Dispatchers.IO) {
-                    val b64 = ImageBytes.toBase64Jpeg(getApplication(), uri)
-                    val parsed = extractor.extract(b64, key)
-                    val path = runCatching { ImageBytes.saveScanCopy(getApplication(), uri, id) }.getOrNull()
-                    parsed to path.orEmpty()
+                val (extraction, savedPath) = withContext(Dispatchers.IO) {
+                    val b64s = uris.map { ImageBytes.toBase64Jpeg(getApplication(), it) }
+                    val ex = extractor.extract(b64s, key)
+                    val path = runCatching { ImageBytes.saveScanCopy(getApplication(), uris.first(), id) }.getOrNull()
+                    ex to path.orEmpty()
                 }
                 _state.update {
-                    it.copy(status = ScanStatus.Ready, contact = contact, imagePath = savedPath)
+                    it.copy(
+                        status = ScanStatus.Ready, contact = extraction.contact,
+                        imagePath = savedPath, lowConfidence = extraction.lowConfidence
+                    )
                 }
                 upsertHistory()
             } catch (e: GeminiException) {
@@ -78,9 +89,9 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Re-run extraction on the current image (e.g. after fixing the API key). */
+    /** Re-run extraction on the current image(s) (e.g. after fixing the API key). */
     fun retry() {
-        _state.value.imageUri?.let { onImageCaptured(it) }
+        if (lastUris.isNotEmpty()) onImagesCaptured(lastUris)
     }
 
     /** Reopen a contact from history into the review flow. */
@@ -122,12 +133,26 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Find existing contacts that look like the current one (runs on IO). */
-    fun checkDuplicates(onResult: (List<String>) -> Unit) {
+    fun checkDuplicates(onResult: (List<ContactReader.Match>) -> Unit) {
         viewModelScope.launch {
             val matches = withContext(Dispatchers.IO) {
                 ContactReader.findMatches(getApplication(), _state.value.contact)
             }
             onResult(matches)
+        }
+    }
+
+    /** Append the current contact's details to an existing contact. */
+    fun merge(contactId: Long, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                ContactWriter.merge(getApplication(), contactId, _state.value.contact)
+            }
+            if (ok) {
+                _state.update { it.copy(saved = true) }
+                upsertHistory()
+            }
+            onResult(ok)
         }
     }
 

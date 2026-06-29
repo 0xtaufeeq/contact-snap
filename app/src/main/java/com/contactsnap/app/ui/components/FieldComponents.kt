@@ -20,12 +20,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 
 /** A single labeled, editable line. */
+// Amber used to flag fields Gemini was unsure about.
+val WarnColor = Color(0xFFB08900)
+
 @Composable
 fun LabeledField(
     label: String,
@@ -34,10 +38,11 @@ fun LabeledField(
     modifier: Modifier = Modifier,
     placeholder: String = "",
     keyboardType: KeyboardType = KeyboardType.Text,
+    warn: Boolean = false,
     leading: (@Composable () -> Unit)? = null
 ) {
     Column(modifier.fillMaxWidth()) {
-        FieldLabel(label)
+        FieldLabel(label, warn)
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
@@ -48,8 +53,8 @@ fun LabeledField(
             leadingIcon = leading,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Next),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.secondary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                focusedBorderColor = if (warn) WarnColor else MaterialTheme.colorScheme.secondary,
+                unfocusedBorderColor = if (warn) WarnColor else MaterialTheme.colorScheme.outline,
                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                 unfocusedContainerColor = MaterialTheme.colorScheme.surface
             )
@@ -64,10 +69,11 @@ fun MultiValueField(
     values: List<String>,
     onChange: (List<String>) -> Unit,
     addLabel: String,
-    keyboardType: KeyboardType = KeyboardType.Text
+    keyboardType: KeyboardType = KeyboardType.Text,
+    warn: Boolean = false
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FieldLabel(label)
+        FieldLabel(label, warn)
         values.forEachIndexed { index, v ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -97,11 +103,11 @@ fun MultiValueField(
 }
 
 @Composable
-private fun FieldLabel(label: String) {
+private fun FieldLabel(label: String, warn: Boolean = false) {
     Text(
-        text = label.uppercase(),
+        text = if (warn) "${label.uppercase()} · DOUBLE-CHECK" else label.uppercase(),
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (warn) WarnColor else MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
     )
 }

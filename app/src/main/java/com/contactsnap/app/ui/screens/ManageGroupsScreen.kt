@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -37,21 +39,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.contactsnap.app.ui.GroupCount
+import com.contactsnap.app.util.GroupColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManageGroupsScreen(
     groups: List<GroupCount>,
+    groupColors: Map<String, Int>,
     onRename: (String, String) -> Unit,
+    onSetColor: (String, Int) -> Unit,
     onDelete: (String) -> Unit,
     onBack: () -> Unit
 ) {
     var renaming by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<String?>(null) }
+    var coloring by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -88,6 +96,8 @@ fun ManageGroupsScreen(
                 items(groups, key = { it.name }) { group ->
                     GroupRow(
                         group = group,
+                        color = GroupColors.effective(group.name, groupColors[group.name]),
+                        onColor = { coloring = group.name },
                         onRename = { renaming = group.name },
                         onDelete = { deleting = group.name }
                     )
@@ -101,6 +111,32 @@ fun ManageGroupsScreen(
             current = old,
             onConfirm = { onRename(old, it); renaming = null },
             onDismiss = { renaming = null }
+        )
+    }
+
+    coloring?.let { name ->
+        AlertDialog(
+            onDismissRequest = { coloring = null },
+            title = { Text("Color for \"$name\"") },
+            text = {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GroupColors.palette.forEach { swatch ->
+                        Box(
+                            Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(swatch)
+                                .clickable {
+                                    onSetColor(name, swatch.toArgb())
+                                    coloring = null
+                                }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { coloring = null }) { Text("Close") }
+            }
         )
     }
 
@@ -120,15 +156,29 @@ fun ManageGroupsScreen(
 }
 
 @Composable
-private fun GroupRow(group: GroupCount, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun GroupRow(
+    group: GroupCount,
+    color: Color,
+    onColor: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit
+) {
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(color)
+                .clickable(onClick = onColor)
+        )
+        Spacer(Modifier.size(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 group.name,

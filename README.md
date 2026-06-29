@@ -64,6 +64,38 @@ You need **Android Studio** (Ladybug or newer) with the Android SDK.
 - `WRITE_CONTACTS` — to save the parsed contact.
 - `INTERNET` — to call the Gemini API.
 
+## Releasing
+
+The app supports a **signed, R8-shrunk release build** (~2.4 MB vs the ~60 MB debug build).
+
+### Local
+1. A keystore lives at `keystore/release.jks` and signing config in `keystore.properties`
+   (both gitignored). **Change the placeholder passwords and regenerate the keystore
+   before any real release** — and back the keystore up; losing it means you can't ship updates.
+2. Build:
+   ```
+   ./gradlew assembleRelease
+   ```
+   Output: `app/build/outputs/apk/release/app-release.apk`.
+
+### CI (GitHub Actions)
+`.github/workflows/release.yml` builds a signed APK and attaches it to a GitHub Release
+on every `v*` tag. Add these repo secrets first (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+| --- | --- |
+| `KEYSTORE_BASE64` | base64 of `keystore/release.jks` — generate with `base64 -w0 keystore/release.jks` (Linux/Git Bash) or `[Convert]::ToBase64String([IO.File]::ReadAllBytes("keystore/release.jks"))` (PowerShell) |
+| `KEYSTORE_PASSWORD` | the store password |
+| `KEY_ALIAS` | `contactsnap` (or your alias) |
+| `KEY_PASSWORD` | the key password |
+
+Then cut a release:
+```
+git tag v1.0.0
+git push origin v1.0.0
+```
+The workflow builds `ContactSnap-v1.0.0.apk` and publishes it under Releases.
+
 ## Notes & next steps
 
 - Extraction quality comes from the vision model. To change models, edit the
