@@ -180,11 +180,13 @@ private fun AppRoot() {
         }
     }
 
+    var pendingFixRead by remember { mutableStateOf<(() -> Unit)?>(null) }
     val fixReadPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) fixVm.scan()
+        if (granted) (pendingFixRead ?: { fixVm.scan() }).invoke()
         else Toast.makeText(context, "Contacts permission is needed to scan.", Toast.LENGTH_SHORT).show()
+        pendingFixRead = null
     }
 
     val fixWritePermission = rememberLauncherForActivityResult(
@@ -195,21 +197,42 @@ private fun AppRoot() {
         pendingFixMerge = null
     }
 
-    fun startFixScan() {
+    fun withReadContacts(action: () -> Unit) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED)
-            fixVm.scan()
-        else fixReadPermission.launch(Manifest.permission.READ_CONTACTS)
+            action()
+        else { pendingFixRead = action; fixReadPermission.launch(Manifest.permission.READ_CONTACTS) }
+    }
+
+    fun startFixScan() = withReadContacts { fixVm.scan() }
+
+    fun startBrowseAll() = withReadContacts { fixVm.loadAll() }
+
+    fun withWriteContacts(run: () -> Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) run()
+        else { pendingFixMerge = run; fixWritePermission.launch(Manifest.permission.WRITE_CONTACTS) }
     }
 
     fun doMerge(cluster: com.contactsnap.app.contacts.DupCluster, name: String, onResult: (Boolean) -> Unit) {
-        val run = {
+        withWriteContacts {
             fixVm.merge(cluster, name) { ok ->
                 onResult(ok)
                 if (!ok) Toast.makeText(context, "Couldn't merge — try again.", Toast.LENGTH_SHORT).show()
             }
         }
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) run()
-        else { pendingFixMerge = run; fixWritePermission.launch(Manifest.permission.WRITE_CONTACTS) }
+    }
+
+    fun doMergePair(
+        first: com.contactsnap.app.contacts.DupContact,
+        second: com.contactsnap.app.contacts.DupContact,
+        name: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        withWriteContacts {
+            fixVm.mergePair(first, second, name) { ok ->
+                onResult(ok)
+                if (!ok) Toast.makeText(context, "Couldn't merge — try again.", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     fun startScan() {
@@ -376,6 +399,7 @@ private fun AppRoot() {
                 onDelete = { historyVm.delete(it) },
                 onClear = { historyVm.clear() },
                 onManageGroups = { nav.navigate(Routes.MANAGE_GROUPS) },
+                onMerge = { keepId, otherId -> historyVm.merge(keepId, otherId) },
                 onExportAll = {
                     if (history.isNotEmpty()) runCatching {
                         Sharing.shareVcf(
@@ -406,6 +430,8 @@ private fun AppRoot() {
                 state = fixState,
                 onScan = { startFixScan() },
                 onMerge = { cluster, name, onResult -> doMerge(cluster, name, onResult) },
+                onLoadAll = { startBrowseAll() },
+                onMergePair = { first, second, name, onResult -> doMergePair(first, second, name, onResult) },
                 onBack = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } }
             )
         }

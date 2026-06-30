@@ -2,6 +2,7 @@ package com.contactsnap.app.ui.screens
 
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,19 +23,26 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CallMerge
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.LocalOffer
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -56,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.contactsnap.app.data.HistoryEntry
 import com.contactsnap.app.model.ParsedContact
+import com.contactsnap.app.util.ContactMerge
 import com.contactsnap.app.util.GroupColors
 import com.contactsnap.app.util.NameFormat
 import com.contactsnap.app.util.NameFormats
@@ -72,11 +82,30 @@ fun HistoryScreen(
     onClear: () -> Unit,
     onManageGroups: () -> Unit,
     onExportAll: () -> Unit,
+    onMerge: (keepId: String, otherId: String) -> Unit,
     onBack: () -> Unit
 ) {
     var selectedGroup by remember { mutableStateOf<String?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
+    var mergeMode by remember { mutableStateOf(false) }
+    // Order matters: the first picked is offered as the primary by default.
+    var picked by remember { mutableStateOf<List<String>>(emptyList()) }
+    var confirmMerge by remember { mutableStateOf(false) }
+
+    fun exitMerge() {
+        mergeMode = false
+        picked = emptyList()
+    }
+
+    fun togglePick(id: String) {
+        picked = when {
+            picked.contains(id) -> picked - id
+            picked.size < 2 -> picked + id
+            else -> picked // already two chosen
+        }
+    }
+
     val groups = remember(entries) {
         entries.map { it.contact.group }.filter { it.isNotBlank() }.distinct()
     }
@@ -90,24 +119,39 @@ fun HistoryScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Recent scans", style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    Text(
+                        if (mergeMode) "Select 2 to merge" else "Recent scans",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
+                    IconButton(onClick = { if (mergeMode) exitMerge() else onBack() }) {
+                        Icon(
+                            if (mergeMode) Icons.Rounded.Close else Icons.Rounded.ArrowBack,
+                            contentDescription = if (mergeMode) "Cancel merge" else "Back"
+                        )
                     }
                 },
                 actions = {
-                    if (entries.isNotEmpty()) {
-                        IconButton(onClick = onExportAll) {
-                            Icon(Icons.Rounded.Share, contentDescription = "Export all as vCard")
+                    if (!mergeMode) {
+                        if (entries.size >= 2) {
+                            IconButton(onClick = { mergeMode = true }) {
+                                Icon(Icons.Rounded.CallMerge, contentDescription = "Merge contacts")
+                            }
                         }
-                    }
-                    IconButton(onClick = onManageGroups) {
-                        Icon(Icons.Rounded.LocalOffer, contentDescription = "Manage groups")
-                    }
-                    if (entries.isNotEmpty()) {
-                        IconButton(onClick = { confirmClear = true }) {
-                            Icon(Icons.Rounded.DeleteSweep, contentDescription = "Clear all")
+                        if (entries.isNotEmpty()) {
+                            IconButton(onClick = onExportAll) {
+                                Icon(Icons.Rounded.Share, contentDescription = "Export all as vCard")
+                            }
+                        }
+                        IconButton(onClick = onManageGroups) {
+                            Icon(Icons.Rounded.LocalOffer, contentDescription = "Manage groups")
+                        }
+                        if (entries.isNotEmpty()) {
+                            IconButton(onClick = { confirmClear = true }) {
+                                Icon(Icons.Rounded.DeleteSweep, contentDescription = "Clear all")
+                            }
                         }
                     }
                 },
@@ -120,7 +164,7 @@ fun HistoryScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
 
-            if (entries.isNotEmpty()) {
+            if (entries.isNotEmpty() && !mergeMode) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
@@ -141,7 +185,16 @@ fun HistoryScreen(
                 )
             }
 
-            if (groups.isNotEmpty()) {
+            if (mergeMode) {
+                Text(
+                    "Tap two scans to combine into one. Their numbers, emails and notes are merged.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
+                )
+            }
+
+            if (groups.isNotEmpty() && !mergeMode) {
                 FlowRow(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -171,7 +224,10 @@ fun HistoryScreen(
             if (shown.isEmpty()) {
                 val message = if (entries.isEmpty()) "No scans yet.\nCards you scan will show up here."
                 else "No matches."
-                Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.fillMaxWidth().weight(1f).padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
                         message,
                         style = MaterialTheme.typography.bodyLarge,
@@ -181,7 +237,7 @@ fun HistoryScreen(
                 }
             } else {
                 LazyColumn(
-                    Modifier.fillMaxSize(),
+                    Modifier.fillMaxWidth().weight(1f),
                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -190,12 +246,56 @@ fun HistoryScreen(
                             entry = entry,
                             nameFormat = nameFormat,
                             groupColor = GroupColors.effective(entry.contact.group, groupColors[entry.contact.group]),
-                            onOpen = { onOpen(entry) },
+                            mergeMode = mergeMode,
+                            selected = picked.contains(entry.id),
+                            onOpen = {
+                                if (mergeMode) togglePick(entry.id) else onOpen(entry)
+                            },
                             onDelete = { onDelete(entry.id) }
                         )
                     }
                 }
             }
+
+            if (mergeMode && picked.size == 2) {
+                Button(
+                    onClick = { confirmMerge = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .height(52.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Icon(Icons.Rounded.CallMerge, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Merge 2 contacts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+
+    if (confirmMerge && picked.size == 2) {
+        val first = entries.firstOrNull { it.id == picked[0] }
+        val second = entries.firstOrNull { it.id == picked[1] }
+        if (first != null && second != null) {
+            MergeContactsDialog(
+                first = first,
+                second = second,
+                nameFormat = nameFormat,
+                onConfirm = { keepId ->
+                    val otherId = if (keepId == first.id) second.id else first.id
+                    onMerge(keepId, otherId)
+                    confirmMerge = false
+                    exitMerge()
+                },
+                onDismiss = { confirmMerge = false }
+            )
+        } else {
+            confirmMerge = false
         }
     }
 
@@ -215,10 +315,70 @@ fun HistoryScreen(
 }
 
 @Composable
+private fun MergeContactsDialog(
+    first: HistoryEntry,
+    second: HistoryEntry,
+    nameFormat: NameFormat,
+    onConfirm: (keepId: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var keepId by remember { mutableStateOf(first.id) }
+    val primary = if (keepId == first.id) first else second
+    val secondary = if (keepId == first.id) second else first
+    val merged = remember(keepId) { ContactMerge.combine(primary.contact, secondary.contact) }
+
+    val nameOf = { e: HistoryEntry ->
+        NameFormats.format(nameFormat, e.contact).ifBlank { "(unnamed)" }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Merge contacts") },
+        text = {
+            Column {
+                Text(
+                    "Keep which details when they differ?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                listOf(first, second).forEach { e ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { keepId = e.id }.padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = keepId == e.id,
+                            onClick = { keepId = e.id },
+                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.secondary)
+                        )
+                        Text(nameOf(e), color = MaterialTheme.colorScheme.onBackground)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                val nCount = merged.phones.size
+                val numbers = "$nCount ${if (nCount == 1) "number" else "numbers"}"
+                val eCount = merged.emails.size
+                val emailPart = if (eCount > 0) " and $eCount ${if (eCount == 1) "email" else "emails"}" else ""
+                Text(
+                    "The result keeps $numbers$emailPart. The other scan will be removed.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(keepId) }) { Text("Merge") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
 private fun HistoryRow(
     entry: HistoryEntry,
     nameFormat: NameFormat,
     groupColor: Color,
+    mergeMode: Boolean,
+    selected: Boolean,
     onOpen: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -230,15 +390,17 @@ private fun HistoryRow(
         entry.timestamp, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS
     ).toString()
 
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onOpen)
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(14.dp))
+        .background(MaterialTheme.colorScheme.surfaceVariant)
+        .let {
+            if (selected) it.border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(14.dp)) else it
+        }
+        .clickable(onClick = onOpen)
+        .padding(8.dp)
+
+    Row(rowModifier, verticalAlignment = Alignment.CenterVertically) {
         Thumbnail(entry.imagePath)
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
@@ -270,13 +432,22 @@ private fun HistoryRow(
                 )
             }
         }
-        IconButton(onClick = onDelete) {
+        if (mergeMode) {
             Icon(
-                Icons.Rounded.Close,
-                contentDescription = "Delete",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
+                if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                contentDescription = if (selected) "Selected" else "Not selected",
+                tint = if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
             )
+        } else {
+            IconButton(onClick = onDelete) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }

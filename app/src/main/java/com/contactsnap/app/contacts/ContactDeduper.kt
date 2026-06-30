@@ -39,7 +39,54 @@ object ContactDeduper {
     private fun nameKey(name: String): String? =
         name.trim().lowercase().replace(Regex("\\s+"), " ").ifBlank { null }
 
+    /** Reads every device contact with its phones and emails. */
+    fun findAll(context: Context): List<DupContact> =
+        loadContacts(context).sortedWith(
+            compareBy({ it.displayName.isBlank() }, { it.displayName.trim().lowercase() })
+        )
+
+    /** Builds a merge cluster from an arbitrary set of contacts (e.g. two the user picked). */
+    fun clusterOf(contacts: List<DupContact>): DupCluster =
+        DupCluster(
+            contacts = contacts.sortedByDescending { it.phones.size + it.emails.size },
+            names = contacts.map { it.displayName }.filter { it.isNotBlank() }.distinct(),
+            mergedPhones = dedupePhones(contacts.flatMap { it.phones }),
+            mergedEmails = contacts.flatMap { it.emails }.map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
+        )
+
     fun findClusters(context: Context): List<DupCluster> {
+        val contacts = loadContacts(context)
+        val byId = contacts.associateBy { it.contactId }
+        val ids = contacts.map { it.contactId }
+
+        val parent = HashMap<Long, Long>().apply { ids.forEach { put(it, it) } }
+        fun find(x: Long): Long {
+            var r = x
+            while (parent[r] != r) r = parent[r]!!
+            var cur = x
+            while (parent[cur] != r) { val nx = parent[cur]!!; parent[cur] = r; cur = nx }
+            return r
+        }
+        fun union(a: Long, b: Long) { val ra = find(a); val rb = find(b); if (ra != rb) parent[ra] = rb }
+
+        val byPhone = HashMap<String, MutableList<Long>>()
+        for (c in contacts) for (p in c.phones) phoneKey(p)?.let { byPhone.getOrPut(it) { mutableListOf() }.add(c.contactId) }
+        byPhone.values.forEach { g -> for (i in 1 until g.size) union(g[0], g[i]) }
+
+        val byName = HashMap<String, MutableList<Long>>()
+        for (c in contacts) nameKey(c.displayName)?.let { byName.getOrPut(it) { mutableListOf() }.add(c.contactId) }
+        byName.values.forEach { g -> for (i in 1 until g.size) union(g[0], g[i]) }
+
+        val groups = HashMap<Long, MutableList<Long>>()
+        for (id in ids) groups.getOrPut(find(id)) { mutableListOf() }.add(id)
+
+        return groups.values.filter { it.size > 1 }
+            .map { memberIds -> clusterOf(memberIds.mapNotNull { byId[it] }) }
+            .sortedByDescending { it.contacts.size }
+    }
+
+    /** Loads every contact with its (unnormalized) phones and emails. */
+    private fun loadContacts(context: Context): List<DupContact> {
         val resolver = context.contentResolver
         val names = HashMap<Long, String>()
         val phones = HashMap<Long, MutableSet<String>>()
@@ -86,39 +133,9 @@ object ContactDeduper {
             }
         }
 
-        val ids = names.keys.toList()
-        val parent = HashMap<Long, Long>().apply { ids.forEach { put(it, it) } }
-        fun find(x: Long): Long {
-            var r = x
-            while (parent[r] != r) r = parent[r]!!
-            var cur = x
-            while (parent[cur] != r) { val nx = parent[cur]!!; parent[cur] = r; cur = nx }
-            return r
+        return names.keys.map { id ->
+            DupContact(id, names[id].orEmpty(), phones[id].orEmpty().toList(), emails[id].orEmpty().toList())
         }
-        fun union(a: Long, b: Long) { val ra = find(a); val rb = find(b); if (ra != rb) parent[ra] = rb }
-
-        val byPhone = HashMap<String, MutableList<Long>>()
-        for (id in ids) for (p in phones[id].orEmpty()) phoneKey(p)?.let { byPhone.getOrPut(it) { mutableListOf() }.add(id) }
-        byPhone.values.forEach { g -> for (i in 1 until g.size) union(g[0], g[i]) }
-
-        val byName = HashMap<String, MutableList<Long>>()
-        for (id in ids) nameKey(names[id].orEmpty())?.let { byName.getOrPut(it) { mutableListOf() }.add(id) }
-        byName.values.forEach { g -> for (i in 1 until g.size) union(g[0], g[i]) }
-
-        val groups = HashMap<Long, MutableList<Long>>()
-        for (id in ids) groups.getOrPut(find(id)) { mutableListOf() }.add(id)
-
-        return groups.values.filter { it.size > 1 }.map { memberIds ->
-            val members = memberIds.map { id ->
-                DupContact(id, names[id].orEmpty(), phones[id].orEmpty().toList(), emails[id].orEmpty().toList())
-            }
-            DupCluster(
-                contacts = members.sortedByDescending { it.phones.size + it.emails.size },
-                names = members.map { it.displayName }.filter { it.isNotBlank() }.distinct(),
-                mergedPhones = dedupePhones(members.flatMap { it.phones }),
-                mergedEmails = members.flatMap { it.emails }.map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
-            )
-        }.sortedByDescending { it.contacts.size }
     }
 
     private fun dedupePhones(raws: List<String>): List<String> {

@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.contactsnap.app.model.ParsedContact
+import com.contactsnap.app.util.ContactMerge
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
@@ -40,6 +41,27 @@ class HistoryStore(private val context: Context) {
             )
             val without = current.filterNot { it.id == entry.id }
             prefs[key] = encode((listOf(merged) + without).take(MAX_ENTRIES))
+        }
+    }
+
+    /** Merge the [otherId] scan into [keepId], combining their fields, and
+     *  remove the [otherId] entry. The kept entry retains its id, timestamp and
+     *  image. No-op if either id is missing. */
+    suspend fun merge(keepId: String, otherId: String) {
+        if (keepId == otherId) return
+        context.historyDataStore.edit { prefs ->
+            val current = decode(prefs[key].orEmpty())
+            val keep = current.firstOrNull { it.id == keepId } ?: return@edit
+            val other = current.firstOrNull { it.id == otherId } ?: return@edit
+            val merged = keep.copy(contact = ContactMerge.combine(keep.contact, other.contact))
+            deleteImage(other.imagePath)
+            prefs[key] = encode(current.mapNotNull { e ->
+                when (e.id) {
+                    keepId -> merged
+                    otherId -> null
+                    else -> e
+                }
+            })
         }
     }
 

@@ -41,6 +41,11 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { store.delete(id) }
     }
 
+    /** Combine two scans into one, keeping [keepId] and removing [otherId]. */
+    fun merge(keepId: String, otherId: String) {
+        viewModelScope.launch { store.merge(keepId, otherId) }
+    }
+
     fun clear() {
         viewModelScope.launch { store.clear() }
     }
